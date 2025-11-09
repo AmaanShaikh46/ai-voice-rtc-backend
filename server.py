@@ -1,6 +1,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-import base64, wave, datetime, os
+from pydantic import BaseModel
+import base64, wave, datetime
 
 app = FastAPI(title="AI Voice RTC Backend")
 
@@ -13,7 +14,21 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    return {"ok": True, "service": "ai-voice-rtc", "stage": "stream-enabled"}
+    return {"ok": True, "service": "ai-voice-rtc", "stage": "call-init-enabled"}
+
+# ✅ This must be in your code
+class CallRequest(BaseModel):
+    caller_id: str
+
+@app.post("/api/calls/initiate")
+def initiate_call(req: CallRequest):
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    session_id = f"session_{timestamp}"
+    return {
+        "ok": True,
+        "session_id": session_id,
+        "message": f"Call session started for {req.caller_id}"
+    }
 
 @app.websocket("/api/audio/stream")
 async def audio_stream(ws: WebSocket):
