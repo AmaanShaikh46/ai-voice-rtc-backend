@@ -1,3 +1,4 @@
 fastapi
-uvicorn
-python-dotenv
+uvicorn[standard]
+pydantic
+starlette
