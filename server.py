@@ -1,7 +1,9 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-import base64, wave, datetime
+import base64, wave, datetime, os
+from openai import OpenAI
 
 app = FastAPI(title="AI Voice RTC Backend")
 
@@ -14,9 +16,9 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    return {"ok": True, "service": "ai-voice-rtc", "stage": "call-init-enabled"}
+    return {"ok": True, "service": "ai-voice-rtc", "stage": "whisper-enabled"}
 
-# ✅ This must be in your code
+# ✅ Simple model for call initiation (kept for Android compatibility)
 class CallRequest(BaseModel):
     caller_id: str
 
@@ -53,50 +55,39 @@ async def audio_stream(ws: WebSocket):
         wf.close()
         print(f"💾 Audio saved as {filename}")
 
-# --- NEW AI Imports ---
-from fastapi.responses import StreamingResponse
-import pyttsx3
-from vosk import Model, KaldiRecognizer
-import json
-import subprocess
+# 🧠 OpenAI Whisper + GPT Integration
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# --- Load offline models once ---
-try:
-    vosk_model = Model(lang="en-us")
-    print("✅ Vosk speech model loaded.")
-except Exception as e:
-    print(f"⚠️ Could not load Vosk model: {e}")
-
-# --- Offline Text-to-Speech setup ---
-engine = pyttsx3.init()
-engine.setProperty("rate", 170)
-
-@app.post("/api/ai/respond")
-async def ai_respond(req: CallRequest):
+@app.post("/api/ai/transcribe_and_reply")
+async def transcribe_and_reply(audio_file: UploadFile = File(...)):
     """
-    Simulate AI reasoning and voice response fully offline
+    Takes a short audio clip, transcribes it with Whisper, 
+    generates a reply using GPT-4o-mini, and returns both texts.
     """
-    user_text = req.caller_id.lower()
+    try:
+        # 1️⃣ Transcribe using Whisper
+        transcription = client.audio.transcriptions.create(
+            model="gpt-4o-mini-transcribe",
+            file=audio_file.file
+        )
+        text = transcription.text.strip()
 
-    # super simple logic for now
-    if "hello" in user_text:
-        reply_text = "Hello! How can I help you today?"
-    elif "how are you" in user_text:
-        reply_text = "I'm just a bunch of Python code, but feeling awesome!"
-    elif "time" in user_text:
-        reply_text = f"The time is {datetime.datetime.now().strftime('%H:%M')}."
-    else:
-        reply_text = "Sorry, I'm still learning new things."
+        # 2️⃣ Generate a reply using GPT-4o-mini
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are KnightFewri, a friendly AI call assistant."},
+                {"role": "user", "content": text}
+            ]
+        )
 
-    # Convert to speech (save temporary .wav)
-    filename = f"ai_reply_{datetime.datetime.now().strftime('%H%M%S')}.wav"
-    engine.save_to_file(reply_text, filename)
-    engine.runAndWait()
+        ai_reply = completion.choices[0].message.content.strip()
 
-    # Return the WAV as stream
-    def iterfile():
-        with open(filename, mode="rb") as file_like:
-            yield from file_like
+        # 3️⃣ Send both results back
+        return JSONResponse({
+            "transcribed_text": text,
+            "ai_reply": ai_reply
+        })
 
-    return StreamingResponse(iterfile(), media_type="audio/wav")
-
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
