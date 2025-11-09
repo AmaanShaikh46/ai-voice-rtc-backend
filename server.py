@@ -12,5 +12,4 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    return {"ok": True, "service": "ai-voice-rtc", "stage": "skeleton"
-    }
+    return {"ok": True, "service": "ai-voice-rtc", "stage": "skeleton"}
