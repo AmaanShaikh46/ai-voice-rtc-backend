@@ -3,3 +3,4 @@ uvicorn[standard]
 pydantic
 starlette
 openai>=1.12.0
+python-multipart
