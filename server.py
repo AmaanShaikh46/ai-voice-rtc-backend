@@ -150,8 +150,8 @@ def get_offline_reply(text: str) -> str:
         return "I'm sorry to hear that. Want to talk about it?"
 
     # --- Fun ---
-    if "joke" in lower or "funny" in lower or "make me laugh" in lower:
-     jokes = [
+        # --- Fun ---
+    jokes = [
         "Why did the computer go to therapy? Because it had too many bytes of emotional data 🤖💔",
         "Why do programmers prefer dark mode? Because light attracts bugs 🪲💻",
         "There are only 10 kinds of people in the world — those who understand binary and those who don’t 💻",
@@ -161,7 +161,17 @@ def get_offline_reply(text: str) -> str:
         "Why was the computer cold? It forgot to close its Windows 🥶",
         "A SQL query walks into a bar, walks up to two tables, and asks — ‘Can I join you?’ 😂"
     ]
-    return random.choice(jokes)
+
+    if "joke" in lower or "Another one" in lower or "make me laugh" in lower:
+        chosen_joke = random.choice(jokes)
+        reaction = random.choice([
+            "Haha! That one never gets old 😄",
+            "Classic programmer humor 😂",
+            "Hope that made you smile 😇",
+            "Good one, right? 😅"
+        ])
+        return f"{chosen_joke} {reaction}"
+
 
     
     if "funny" in lower or "laugh" in lower:
