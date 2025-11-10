@@ -19,7 +19,7 @@ except Exception:
 # =========================================================
 # ⚙️ FastAPI Initialization
 # =========================================================
-app = FastAPI(title="AI Voice RTC Backend - Render Safe Edition")
+app = FastAPI(title="AI Voice RTC Backend - Render Stable Edition")
 
 app.add_middleware(
     CORSMiddleware,
@@ -173,17 +173,23 @@ async def audio_stream(ws: WebSocket):
 
     # Render fallback (no Vosk)
     if vosk_model is None or KaldiRecognizer is None:
-        await ws.send_text("👋 Hello from Render — Vosk model disabled, mock mode active.")
-        while True:
-            try:
-                _ = await ws.receive_text()
-                reply = get_offline_reply("hello")
-                await ws.send_text(reply)
-            except WebSocketDisconnect:
-                print("🔌 Android disconnected.")
-                break
+        print("⚠️ Running in Render-safe mock mode (no voice recognition).")
+        await ws.send_text("👋 Render-safe backend connected! (voice recognition disabled).")
+        try:
+            while True:
+                message = await ws.receive_text()
+                print(f"📩 Mock received from Android: {len(message)} bytes")
+                # Only reply once when explicitly asked
+                if "test" in message.lower() or "backend" in message.lower():
+                    await ws.send_text("✅ Backend is alive and listening (Render-safe mock mode).")
+                else:
+                    # No constant replies
+                    pass
+        except WebSocketDisconnect:
+            print("🔌 Android disconnected.")
         return
 
+    # Local (Vosk active)
     recognizer = KaldiRecognizer(vosk_model, 16000)
     last_text, last_reply_at = "", 0.0
 
