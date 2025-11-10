@@ -41,8 +41,12 @@ def health():
 # =========================================================
 try:
     print("⏳ Loading Vosk model...")
-    vosk_model = Model(model_name="vosk-model-small-en-us-0.15")
-    print("✅ Vosk model loaded successfully.")
+    if os.path.exists("vosk-model-small-en-us-0.15"):
+        vosk_model = Model(model_name="vosk-model-small-en-us-0.15")
+        print("✅ Vosk model loaded successfully.")
+    else:
+        print("⚠️ Vosk model folder missing — running in mock mode (Render build).")
+        vosk_model = None
 except Exception as e:
     print(f"⚠️ Failed to load Vosk model: {e}")
     vosk_model = None
