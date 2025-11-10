@@ -104,30 +104,76 @@ def normalize_names(s: str) -> str:
 # =========================================================
 # 💬 Reply Logic
 # =========================================================
-def get_offline_reply(text: str) -> str:
-    lower = normalize_names(text.lower().strip())
+import random
 
-    # --- Custom personality / names ---
-    if any(k in lower for k in ["lubna"]):
+def get_offline_reply(text: str) -> str:
+    lower = text.lower().strip()
+
+    # --- Normalize common Vosk mishears ---
+    phonetic_map = {
+        "a man shake": "amaan shaikh",
+        "a man she": "amaan shaikh",
+        "i'm on shake": "amaan shaikh",
+        "a man": "amaan shaikh",
+        "a man cheek": "amaan shaikh",
+        "a man sheikh": "amaan shaikh",
+        "i'm an shake": "amaan shaikh",
+
+        "lumina": "lubna",
+        "illumina": "lubna",
+        "lube now": "lubna",
+        "luminal": "lubna",
+        "lubinal": "lubna",
+        "lubina": "lubna",
+        "luminosity": "lubna",
+        "no been up": "lubna",
+        "been up": "lubna",
+        "loop nah": "lubna",
+        "luna": "lubna",
+
+        "razor": "raza",
+        "rather": "raza",
+        "riser": "raza",
+        "rosa": "raza",
+        "rasa": "raza",
+        "riza": "raza",
+    }
+
+    for wrong, right in phonetic_map.items():
+        if wrong in lower:
+            lower = lower.replace(wrong, right)
+
+    # --- Joke list ---
+    jokes = [
+        "Yes Ofcourse, Why did the computer go to therapy? Because it had too many bytes of emotional data 🤖💔",
+        "Why do programmers prefer dark mode? Because light attracts bugs 🪲💻",
+        "Yes Ofcourse, There are only 10 kinds of people in the world — those who understand binary and those who don’t 💻",
+        "Why did the developer go broke? Because he used up all his cache 💸",
+        "Yes Ofcourse, What do you call a programmer’s favorite hangout spot? The Foo Bar 🍻",
+        "How many programmers does it take to change a light bulb? None, that’s a hardware problem 💡",
+        "Yes Ofcourse, Why was the computer cold? It forgot to close its Windows 🥶",
+        "A SQL query walks into a bar, walks up to two tables and asks — ‘Can I join you?’ 😂"
+    ]
+
+    # --- Custom personality (prioritized matching) ---
+    if any(word in lower for word in ["lubna"]):
         return "Yes, I know Lubna — she has a very bad sense of humor 😂"
 
-    if any(k in lower for k in ["amaan", "amaan shaikh"]):
+    if any(word in lower for word in ["amaan", "amaan shaikh"]):
         return "Of course! Master Amaan is my creator — the brilliant mind behind me."
 
-    if match_phrase(lower, ["do you know raza", "raza", "you know raza"], threshold=0.75):
-        return "Yes, I know Raza — he’s stupid 😆"
+    if any(word in lower for word in ["raza"]):
+        return "Yes, I know Raza — he’s stupid and dumb"
 
-    # Light Fury / Lite Fewri easter egg
-    if any(k in lower for k in ["light fury", "lite fury", "lite fewri", "light fewri", "night fury", "light theory"]):
-        return ("Yes, I know Light Fury... but Master Amaan told me not to say much about her. "
-                "Something about a secret mission or feelings involved 😅")
+    if any(word in lower for word in ["light fury", "lite fury", "lite fewri", "light fewri", "night fury"]):
+        return "Yes, I know Light Fury... but Master Amaan told me not to say much about her. Something about a secret mission or feelings involved 😅"
 
     # --- Greetings ---
-    if match_phrase(lower, ["good morning", "morning"]):
+    if any(word in lower for word in ["good morning", "morning"]):
         return "Good morning! Hope your day starts with a smile 😊"
-    if match_phrase(lower, ["good night", "night"]):
+    if any(word in lower for word in ["good night", "night"]):
         return "Good night! Don’t forget to dream big 🌙"
-    if match_phrase(lower, ["hello", "hi", "hey", "what's up", "yo"]):
+    if any(word in lower for word in ["hello", "hi", "hey", "what's up", "yo"]):
         return "Hello there! How are you doing today?"
 
     # --- Conversation ---
@@ -145,16 +191,14 @@ def get_offline_reply(text: str) -> str:
         return f"Today is {datetime.datetime.now().strftime('%A, %B %d, %Y')}."
 
     # --- Mood ---
-    if any(w in lower for w in ["i'm fine", "i am fine", "i'm good", "doing good"]):
+    if any(word in lower for word in ["i'm fine", "i am fine", "i'm good", "doing good"]):
         return "That’s awesome to hear! 😄"
-    if any(w in lower for w in ["sad", "tired", "not good"]):
+    if any(word in lower for word in ["sad", "tired", "not good"]):
         return "I'm sorry to hear that. Want to talk about it?"
 
     # --- Fun ---
-    if "joke" in lower:
-        return "Why did the computer go to therapy? Because it had too many bytes of emotional data 🤖💔"
-    if "funny" in lower or "laugh" in lower:
-        return "Haha! I’ll try to be funnier next time 😂"
+    if "joke" in lower or "funny" in lower or "make me laugh" in lower:
+        return random.choice(jokes)
     if "cool" in lower or "fact" in lower:
         return "Did you know dolphins actually have names for each other?"
 
@@ -171,7 +215,7 @@ def get_offline_reply(text: str) -> str:
         return "Of course! What do you need?"
 
     # --- Goodbye ---
-    if match_phrase(lower, ["bye", "goodbye", "see you", "later"]):
+    if any(word in lower for word in ["bye", "goodbye", "see you", "later"]):
         return "Goodbye! Talk to you soon 👋"
 
     # --- Default ---
