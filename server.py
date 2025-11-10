@@ -1,6 +1,6 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-import base64, json, datetime, os, traceback, threading, difflib, time
+import base64, json, datetime, os, traceback, threading, difflib, time, random
 from vosk import Model, KaldiRecognizer
 
 # Optional import: only used if USE_SERVER_TTS=true
@@ -94,6 +94,9 @@ def normalize_names(s: str) -> str:
         "rosa": "raza",
         "rasa": "raza",
         "riza": "raza",
+
+         # Bored
+        "Board": "bored",
     }
 
     for wrong, right in phonetic_map.items():
@@ -147,8 +150,20 @@ def get_offline_reply(text: str) -> str:
         return "I'm sorry to hear that. Want to talk about it?"
 
     # --- Fun ---
-    if "joke" in lower:
-        return "Why did the computer go to therapy? Because it had too many bytes of emotional data 🤖💔"
+    if "joke" in lower or "funny" in lower or "make me laugh" in lower:
+     jokes = [
+        "Why did the computer go to therapy? Because it had too many bytes of emotional data 🤖💔",
+        "Why do programmers prefer dark mode? Because light attracts bugs 🪲💻",
+        "There are only 10 kinds of people in the world — those who understand binary and those who don’t 💻",
+        "Why did the developer go broke? Because he used up all his cache 💸",
+        "What do you call a programmer’s favorite hangout spot? The Foo Bar 🍻",
+        "How many programmers does it take to change a light bulb? None, that’s a hardware problem 💡",
+        "Why was the computer cold? It forgot to close its Windows 🥶",
+        "A SQL query walks into a bar, walks up to two tables, and asks — ‘Can I join you?’ 😂"
+    ]
+    return random.choice(jokes)
+
+    
     if "funny" in lower or "laugh" in lower:
         return "Haha! I’ll try to be funnier next time 😂"
     if "cool" in lower or "fact" in lower:
