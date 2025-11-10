@@ -1,18 +1,25 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import base64, json, datetime, os, traceback, threading, difflib, time, random
-from vosk import Model, KaldiRecognizer
 
-# Optional import for local voice output
+# =========================================================
+# Optional imports
+# =========================================================
+try:
+    from vosk import Model, KaldiRecognizer
+except Exception:
+    Model = None
+    KaldiRecognizer = None
+
 try:
     import pyttsx3
 except Exception:
     pyttsx3 = None
 
 # =========================================================
-# ⚙️ FastAPI Initialization
+# FastAPI Initialization
 # =========================================================
-app = FastAPI(title="AI Voice RTC Backend - Full Interactive Edition")
+app = FastAPI(title="AI Voice RTC Backend - Stable + Render-Safe")
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,38 +31,40 @@ app.add_middleware(
 USE_SERVER_TTS = os.getenv("USE_SERVER_TTS", "false").lower() == "true"
 
 # =========================================================
-# 🩺 Health Check
+# Health Check
 # =========================================================
 @app.get("/health")
 def health():
+    engine = "vosk" if (Model is not None and os.path.exists("vosk-model-small-en-us-0.15")) else "mock"
     return {
         "ok": True,
         "mode": "real-time",
-        "engine": "vosk",
+        "engine": engine,
         "server_tts": USE_SERVER_TTS,
     }
 
 # =========================================================
-# 🧠 Load Vosk Model
+# Load Vosk Model (available locally; often missing on Render)
 # =========================================================
-try:
-    print("⏳ Loading Vosk model...")
-    if os.path.exists("vosk-model-small-en-us-0.15"):
+vosk_model = None
+if Model is not None and os.path.exists("vosk-model-small-en-us-0.15"):
+    try:
+        print("⏳ Loading Vosk model...")
         vosk_model = Model(model_name="vosk-model-small-en-us-0.15")
         print("✅ Vosk model loaded successfully.")
-    else:
-        print("⚠️ Vosk model folder missing — running in mock mode.")
+    except Exception as e:
+        print(f"⚠️ Failed to load Vosk model: {e}")
         vosk_model = None
-except Exception as e:
-    print(f"⚠️ Failed to load Vosk model: {e}")
-    vosk_model = None
+else:
+    print("⚠️ Vosk model folder not found — running in Render-safe mock mode.")
 
 # =========================================================
-# 💬 Reply Logic
+# Reply Logic
 # =========================================================
 def get_offline_reply(text: str) -> str:
     lower = text.lower().strip()
 
+    # normalize common mis-hearings
     phonetic_map = {
         # Amaan Shaikh
         "a man shake": "amaan shaikh",
@@ -89,12 +98,11 @@ def get_offline_reply(text: str) -> str:
         "rasa": "raza",
         "riza": "raza",
     }
-
     for wrong, right in phonetic_map.items():
         if wrong in lower:
             lower = lower.replace(wrong, right)
 
-    # --- Jokes (3 yours + 5 extra) ---
+    # jokes
     jokes = [
         "Why did the computer go to therapy? Because it had too many bytes of emotional data 🤖💔",
         "Why do programmers prefer dark mode? Because light attracts bugs 🪲💻",
@@ -103,28 +111,28 @@ def get_offline_reply(text: str) -> str:
         "What do you call a programmer’s favorite hangout spot? The Foo Bar 🍻",
         "How many programmers does it take to change a light bulb? None, that’s a hardware problem 💡",
         "Why was the computer cold? It forgot to close its Windows 🥶",
-        "A SQL query walks into a bar and asks — ‘Can I join you?’ 😂"
+        "A SQL query walks into a bar, walks up to two tables and asks — ‘Can I join you?’ 😂",
     ]
 
-    # --- Custom personality replies ---
-    if any(word in lower for word in ["lubna"]):
+    # custom personality
+    if "lubna" in lower:
         return "Yes, I know Lubna — she has a very bad sense of humor 😂"
-    if any(word in lower for word in ["amaan", "amaan shaikh"]):
+    if "amaan" in lower or "amaan shaikh" in lower:
         return "Of course! Master Amaan is my creator — the brilliant mind behind me."
-    if any(word in lower for word in ["raza"]):
+    if "raza" in lower:
         return "Yes, I know Raza — he’s stupid and dumb"
-    if any(word in lower for word in ["light fury", "lite fury", "lite fewri", "light fewri", "night fury"]):
+    if any(w in lower for w in ["light fury", "lite fury", "lite fewri", "light fewri", "night fury"]):
         return "Yes, I know Light Fury... but Master Amaan told me not to say much about her. Something about a secret mission or feelings involved 😅"
 
-    # --- Greetings ---
-    if any(word in lower for word in ["good morning", "morning"]):
+    # greetings
+    if any(w in lower for w in ["good morning", "morning"]):
         return "Good morning! Hope your day starts with a smile 😊"
-    if any(word in lower for word in ["good night", "night"]):
+    if any(w in lower for w in ["good night", "night"]):
         return "Good night! Don’t forget to dream big 🌙"
-    if any(word in lower for word in ["hello", "hi", "hey", "what's up", "yo"]):
+    if any(w in lower for w in ["hello", "hi", "hey", "what's up", "yo"]):
         return "Hello there! How are you doing today?"
 
-    # --- Conversation ---
+    # conversation
     if "how are you" in lower:
         return "I'm doing great, thanks for asking! What about you?"
     if "what are you doing" in lower:
@@ -132,54 +140,47 @@ def get_offline_reply(text: str) -> str:
     if "bored" in lower:
         return "Maybe you could play some music or ask me to tell you a joke?"
 
-    # --- Time and Date ---
+    # time/date
     if "time" in lower:
         return f"The time now is {datetime.datetime.now().strftime('%I:%M %p')}."
     if "date" in lower or "day" in lower:
         return f"Today is {datetime.datetime.now().strftime('%A, %B %d, %Y')}."
 
-    # --- Mood ---
-    if any(word in lower for word in ["i'm fine", "i am fine", "i'm good", "doing good"]):
-        return "That’s awesome to hear! 😄"
-    if any(word in lower for word in ["sad", "tired", "not good"]):
-        return "I'm sorry to hear that. Want to talk about it?"
-
-    # --- Fun ---
+    # fun
     if "joke" in lower or "funny" in lower or "make me laugh" in lower:
         return random.choice(jokes)
     if "cool" in lower or "fact" in lower:
         return "Did you know dolphins actually have names for each other?"
 
-    # --- Identity ---
+    # identity
     if "your name" in lower or "who are you" in lower:
         return "I'm your AI assistant — offline, smart, and kind of funny sometimes!"
     if "who made you" in lower or "creator" in lower:
         return "I was made by Amaan Shaikh — a genius coder from Daund, Pune 🔥"
 
-    # --- Politeness ---
+    # politeness
     if "thank" in lower:
         return "You're very welcome! 😇"
     if "please" in lower:
         return "Of course! What do you need?"
 
-    # --- Goodbye ---
-    if any(word in lower for word in ["bye", "goodbye", "see you", "later"]):
+    # goodbye
+    if any(w in lower for w in ["bye", "goodbye", "see you", "later"]):
         return "Goodbye! Talk to you soon 👋"
 
-    # --- Default ---
+    # default
     return f"You said: {text}. I'm still learning to understand more topics."
 
 # =========================================================
-# 🔊 Server-side TTS (optional; off on Render)
+# Server-side TTS (optional; off on Render)
 # =========================================================
 def speak_offline(reply_text: str):
     if not USE_SERVER_TTS:
-        print(f"🔊 (Render mode) Skipping server TTS. Reply: {reply_text}")
+        print(f"🔊 (Render/Client TTS) Reply: {reply_text}")
         return
     if pyttsx3 is None:
         print("⚠️ pyttsx3 not available; skipping server TTS.")
         return
-
     def _tts():
         try:
             engine = pyttsx3.init()
@@ -189,17 +190,55 @@ def speak_offline(reply_text: str):
             print(f"🔊 AI spoke (server): {reply_text}")
         except Exception as e:
             print(f"⚠️ TTS error: {e}")
-
     threading.Thread(target=_tts, daemon=True).start()
 
 # =========================================================
-# 🎧 Real-time Audio Stream
+# Real-time WebSocket
 # =========================================================
 @app.websocket("/api/audio/stream")
 async def audio_stream(ws: WebSocket):
     await ws.accept()
     print("🎙 Android connected for real-time conversation")
 
+    # ---------- Render-safe MOCK MODE (no Vosk available) ----------
+    if vosk_model is None or KaldiRecognizer is None:
+        print("⚠️ Running in Render-safe mock mode (no voice recognition).")
+        # Gentle, non-spammy replies: greet once, then reply every ~2s at most
+        last_reply_at = 0.0
+        greeted = False
+        try:
+            while True:
+                data = await ws.receive_text()   # base64 audio; we ignore content here
+                now = time.time()
+                # greet once
+                if not greeted:
+                    await ws.send_text("Hello there! How are you doing today?")
+                    greeted = True
+                    last_reply_at = now
+                    continue
+                # throttle: at most once every 2s
+                if (now - last_reply_at) >= 2.0:
+                    # rotate through a small set of neutral prompts so it feels conversational
+                    prompt = random.choice([
+                        "Say 'joke' if you’d like me to make you laugh!",
+                        "Ask me the time or the date.",
+                        "Try names like Amaan, Lubna, or Raza 😉",
+                        "You can also say hello or ask how I am."
+                    ])
+                    # reuse reply logic for some variety
+                    reply = random.choice([get_offline_reply("hello"), prompt])
+                    await ws.send_text(reply)
+                    last_reply_at = now
+        except WebSocketDisconnect:
+            print("🔌 Android disconnected (mock mode).")
+        except Exception as e:
+            print("❌ Stream error (mock mode):", e)
+            traceback.print_exc()
+        finally:
+            print("🛑 Audio stream ended (mock mode)")
+        return
+
+    # ---------- FULL VOSK MODE (local machine) ----------
     recognizer = KaldiRecognizer(vosk_model, 16000)
     last_text = ""
     last_reply_at = 0.0
@@ -209,7 +248,6 @@ async def audio_stream(ws: WebSocket):
             data = await ws.receive_text()
             audio_chunk = base64.b64decode(data)
 
-            # Feed Vosk
             if recognizer.AcceptWaveform(audio_chunk):
                 result = json.loads(recognizer.Result())
                 text = (result.get("text") or "").strip()
@@ -218,11 +256,11 @@ async def audio_stream(ws: WebSocket):
                     final_result = json.loads(recognizer.FinalResult())
                     text = (final_result.get("text") or "").strip()
 
-                # Prevent repeating same replies too fast
+                # avoid super-fast repeats
                 if text and (text != last_text or (time.time() - last_reply_at) > 2.0):
                     print(f"🗣 Recognized phrase: {text}")
                     reply = get_offline_reply(text)
-                    speak_offline(reply)
+                    speak_offline(reply)            # server TTS only if enabled; phone TTS will speak anyway
                     await ws.send_text(reply)
                     last_text = text
                     last_reply_at = time.time()
