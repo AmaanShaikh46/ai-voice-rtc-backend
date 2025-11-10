@@ -1,22 +1,7 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-from openai import OpenAI
-import base64, wave, datetime, os, json, traceback, threading, difflib, time
+import base64, json, datetime, os, traceback, threading, difflib, time
 from vosk import Model, KaldiRecognizer
-
-# =========================================================
-# ⚙️ FastAPI Initialization
-# =========================================================
-app = FastAPI(title="AI Voice RTC Backend - Stable Whisper + Vosk Edition")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Optional import: only used if USE_SERVER_TTS=true
 try:
@@ -25,33 +10,30 @@ except Exception:
     pyttsx3 = None
 
 # =========================================================
-# 🔧 Configurations
+# ⚙️ FastAPI Initialization
 # =========================================================
+app = FastAPI(title="AI Voice RTC Backend - Stable Interactive Edition")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Toggle: server-side TTS (off on Render; on for local if you want)
 USE_SERVER_TTS = os.getenv("USE_SERVER_TTS", "false").lower() == "true"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 # =========================================================
 # 🩺 Health Check
 # =========================================================
 @app.get("/health")
 def health():
-    return {"ok": True, "service": "ai-voice-rtc", "stage": "whisper-enabled"}
-
-# =========================================================
-# 📞 Call Initiation API (for Android compatibility)
-# =========================================================
-class CallRequest(BaseModel):
-    caller_id: str
-
-@app.post("/api/calls/initiate")
-def initiate_call(req: CallRequest):
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    session_id = f"session_{timestamp}"
     return {
         "ok": True,
-        "session_id": session_id,
-        "message": f"Call session started for {req.caller_id}"
+        "mode": "real-time",
+        "engine": "vosk",
+        "server_tts": USE_SERVER_TTS,
     }
 
 # =========================================================
@@ -66,9 +48,10 @@ except Exception as e:
     vosk_model = None
 
 # =========================================================
-# 🔎 Helper Functions
+# 🔎 Helpers
 # =========================================================
 def match_phrase(phrase: str, possibilities, threshold=0.65):
+    """Fuzzy-match a phrase to a list of options."""
     phrase = phrase.lower().strip()
     for p in possibilities:
         if difflib.SequenceMatcher(None, phrase, p.lower()).ratio() >= threshold:
@@ -76,8 +59,11 @@ def match_phrase(phrase: str, possibilities, threshold=0.65):
     return None
 
 def normalize_names(s: str) -> str:
+    """Normalize common Vosk mis-hearings to target names."""
     lower = s.lower()
+
     phonetic_map = {
+        # Amaan Shaikh
         "a man shake": "amaan shaikh",
         "a man sheikh": "amaan shaikh",
         "a man she": "amaan shaikh",
@@ -85,6 +71,8 @@ def normalize_names(s: str) -> str:
         "i'm on shake": "amaan shaikh",
         "i'm an shake": "amaan shaikh",
         "a man": "amaan shaikh",
+
+        # Lubna
         "lumina": "lubna",
         "illumina": "lubna",
         "luminal": "lubna",
@@ -93,8 +81,13 @@ def normalize_names(s: str) -> str:
         "lubena": "lubna",
         "lupna": "lubna",
         "lube now": "lubna",
+        "no been up": "lubna",
+        "been up": "lubna",
         "loop nah": "lubna",
         "luna": "lubna",
+        "luminosity": "lubna",
+
+        # Raza
         "razor": "raza",
         "rather": "raza",
         "riser": "raza",
@@ -102,6 +95,7 @@ def normalize_names(s: str) -> str:
         "rasa": "raza",
         "riza": "raza",
     }
+
     for wrong, right in phonetic_map.items():
         if wrong in lower:
             lower = lower.replace(wrong, right)
@@ -113,15 +107,18 @@ def normalize_names(s: str) -> str:
 def get_offline_reply(text: str) -> str:
     lower = normalize_names(text.lower().strip())
 
+    # --- Custom personality / names ---
     if "lubna" in lower:
         return "Yes, I know Lubna — she has a very bad sense of humor 😂"
     if "amaan" in lower or "amaan shaikh" in lower:
         return "Of course! Master Amaan is my creator — the brilliant mind behind me."
     if "raza" in lower:
         return "Yes, I know Raza — he’s stupid 😆"
-    if any(k in lower for k in ["light fury", "lite fury", "lite fewri", "light fewri", "night fury"]):
-        return "Yes, I know Light Fury... but Master Amaan told me not to say much about her. Something about a secret mission or feelings involved 😅"
+    if any(k in lower for k in ["light fury", "lite fury", "lite fewri", "light fewri", "night fury", "light theory"]):
+        return ("Yes, I know Light Fury... but Master Amaan told me not to say much about her. "
+                "Something about a secret mission or feelings involved 😅")
 
+    # --- Greetings ---
     if match_phrase(lower, ["good morning", "morning"]):
         return "Good morning! Hope your day starts with a smile 😊"
     if match_phrase(lower, ["good night", "night"]):
@@ -129,6 +126,7 @@ def get_offline_reply(text: str) -> str:
     if match_phrase(lower, ["hello", "hi", "hey", "what's up", "yo"]):
         return "Hello there! How are you doing today?"
 
+    # --- Conversation ---
     if "how are you" in lower:
         return "I'm doing great, thanks for asking! What about you?"
     if "what are you doing" in lower:
@@ -136,11 +134,19 @@ def get_offline_reply(text: str) -> str:
     if "bored" in lower:
         return "Maybe you could play some music or ask me to tell you a joke?"
 
+    # --- Time and Date ---
     if "time" in lower:
         return f"The time now is {datetime.datetime.now().strftime('%I:%M %p')}."
     if "date" in lower or "day" in lower:
         return f"Today is {datetime.datetime.now().strftime('%A, %B %d, %Y')}."
 
+    # --- Mood ---
+    if any(w in lower for w in ["i'm fine", "i am fine", "i'm good", "doing good"]):
+        return "That’s awesome to hear! 😄"
+    if any(w in lower for w in ["sad", "tired", "not good"]):
+        return "I'm sorry to hear that. Want to talk about it?"
+
+    # --- Fun ---
     if "joke" in lower:
         return "Why did the computer go to therapy? Because it had too many bytes of emotional data 🤖💔"
     if "funny" in lower or "laugh" in lower:
@@ -148,18 +154,23 @@ def get_offline_reply(text: str) -> str:
     if "cool" in lower or "fact" in lower:
         return "Did you know dolphins actually have names for each other?"
 
+    # --- Identity ---
     if "your name" in lower or "who are you" in lower:
         return "I'm your AI assistant — offline, smart, and kind of funny sometimes!"
     if "who made you" in lower or "creator" in lower:
         return "I was made by Amaan Shaikh — a genius coder from Daund, Pune 🔥"
 
+    # --- Politeness ---
     if "thank" in lower:
         return "You're very welcome! 😇"
     if "please" in lower:
         return "Of course! What do you need?"
+
+    # --- Goodbye ---
     if match_phrase(lower, ["bye", "goodbye", "see you", "later"]):
         return "Goodbye! Talk to you soon 👋"
 
+    # --- Default ---
     return f"You said: {text}. I'm still learning to understand more topics."
 
 # =========================================================
@@ -169,9 +180,11 @@ def speak_offline(reply_text: str):
     if not USE_SERVER_TTS:
         print(f"🔊 (Render mode) Skipping server TTS. Reply: {reply_text}")
         return
+
     if pyttsx3 is None:
         print("⚠️ pyttsx3 not available; skipping server TTS.")
         return
+
     def _tts():
         try:
             engine = pyttsx3.init()
@@ -191,13 +204,6 @@ async def audio_stream(ws: WebSocket):
     await ws.accept()
     print("🎙 Android connected for real-time conversation")
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"call_recording_{timestamp}.wav"
-    wf = wave.open(filename, "wb")
-    wf.setnchannels(1)
-    wf.setsampwidth(2)
-    wf.setframerate(16000)
-
     recognizer = KaldiRecognizer(vosk_model, 16000)
     last_text = ""
     last_reply_at = 0.0
@@ -205,10 +211,10 @@ async def audio_stream(ws: WebSocket):
     try:
         while True:
             data = await ws.receive_text()
-            audio_bytes = base64.b64decode(data)
-            wf.writeframes(audio_bytes)
+            audio_chunk = base64.b64decode(data)
 
-            if recognizer.AcceptWaveform(audio_bytes):
+            # Feed Vosk
+            if recognizer.AcceptWaveform(audio_chunk):
                 result = json.loads(recognizer.Result())
                 text = (result.get("text") or "").strip()
 
@@ -216,6 +222,7 @@ async def audio_stream(ws: WebSocket):
                     final_result = json.loads(recognizer.FinalResult())
                     text = (final_result.get("text") or "").strip()
 
+                # Basic debouncing: ignore duplicate lines within ~2s
                 if text and (text != last_text or (time.time() - last_reply_at) > 2.0):
                     print(f"🗣 Recognized phrase: {text}")
                     reply = get_offline_reply(text)
@@ -223,6 +230,10 @@ async def audio_stream(ws: WebSocket):
                     await ws.send_text(reply)
                     last_text = text
                     last_reply_at = time.time()
+            else:
+                partial = json.loads(recognizer.PartialResult()).get("partial", "")
+                if partial:
+                    print(f"⌛ Partial: {partial}")
 
     except WebSocketDisconnect:
         print("🔌 Android disconnected from stream")
@@ -230,38 +241,4 @@ async def audio_stream(ws: WebSocket):
         print("❌ Stream error:", e)
         traceback.print_exc()
     finally:
-        wf.close()
-        print(f"💾 Audio saved as {filename}")
         print("🛑 Audio stream ended")
-
-# =========================================================
-# 🧠 Whisper + GPT Integration
-# =========================================================
-@app.post("/api/ai/transcribe_and_reply")
-async def transcribe_and_reply(audio_file: UploadFile = File(...)):
-    try:
-        transcription = client.audio.transcriptions.create(
-            model="gpt-4o-mini-transcribe",
-            file=audio_file.file
-        )
-        text = transcription.text.strip()
-
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are KnightFewri, a friendly AI call assistant."},
-                {"role": "user", "content": text}
-            ]
-        )
-
-        ai_reply = completion.choices[0].message.content.strip()
-
-        return JSONResponse({
-            "transcribed_text": text,
-            "ai_reply": ai_reply
-        })
-
-    except Exception as e:
-        print("❌ Whisper+GPT Error:", e)
-        traceback.print_exc()
-        return JSONResponse({"error": str(e)}, status_code=500)
