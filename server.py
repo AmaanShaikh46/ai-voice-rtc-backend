@@ -120,7 +120,8 @@ def get_offline_reply(text: str) -> str:
     if any(k in lower for k in ["light fury", "lite fury", "lite fewri", "light fewri", "night fury", "light theory"]):
         return ("Yes, I know Light Fury... but Master Amaan told me not to say much about her. "
                 "Something about a secret mission or feelings involved 😅")
-
+    if "kartikay" in lower or "kohli" in lower:
+        return "Yes i know kartikay, He is very smart"
     # --- Greetings ---
     if match_phrase(lower, ["good morning", "morning"]):
         return "Good morning! Hope your day starts with a smile 😊"
