@@ -1,0 +1,32 @@
+# --- Python Cache ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Virtual Environments ---
+venv/
+env/
+ENV/
+.venv/
+.Python
+
+# --- Audio / Temp Files ---
+*.wav
+*.mp3
+*.m4a
+*.tmp
+*.log
+
+# --- System Files ---
+.DS_Store
+Thumbs.db
+
+# --- VS Code ---
+.vscode/
+.settings/
+
+# --- Render/Deployment Cache ---
+*.sqlite3
+*.db
+*.pid
+*.lock
