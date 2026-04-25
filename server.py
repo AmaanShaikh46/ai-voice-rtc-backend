@@ -608,16 +608,20 @@ async def audio_stream(ws: WebSocket):
     call_id = ws.query_params.get("call_id")
     print(f"🎯 WebSocket started for call_id={call_id}")
 
-    call_resp = supabase.table("calls") \
-        .select("message_to_deliver") \
-        .eq("id", call_id) \
-        .limit(1) \
-        .execute()
-
-    if call_resp.data:
-        original_message = call_resp.data[0].get("message_to_deliver", "Sorry, I couldn't find the original message.")
+    if not call_id:
+        print("🧪 Running in TEST mode (no call_id)")
+        original_message = "This is a test conversation."
     else:
-        original_message = "Sorry, I couldn't find the original message."
+        call_resp = supabase.table("calls") \
+            .select("message_to_deliver") \
+            .eq("id", call_id) \
+            .limit(1) \
+            .execute()
+
+        if call_resp.data:
+            original_message = call_resp.data[0].get("message_to_deliver", "Sorry, I couldn't find the original message.")
+        else:
+            original_message = "Sorry, I couldn't find the original message."
 
     if vosk_model is None:
         await ws.send_text("Speech recognition model not loaded on server.")
