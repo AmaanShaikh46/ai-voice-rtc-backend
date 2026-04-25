@@ -1,7 +1,9 @@
 fastapi
 uvicorn[standard]
+python-dotenv
+requests
+vosk
+supabase
 pydantic
 starlette
-python-multipart
-vosk
-pyttsx3
+websockets
