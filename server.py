@@ -24,7 +24,7 @@ except Exception:
     pyttsx3 = None
 
 # =========================================================
-#  Load ENV FIRST (CRITICAL)
+#  Load ENV 
 # =========================================================
 load_dotenv()
 
@@ -91,10 +91,8 @@ def mark_call_missed_if_needed(call):
 def missed_call_worker():
     while True:
         try:
-            # 🔥 KEEP SUPABASE ACTIVE (THIS IS THE FIX)
             supabase.table("calls").select("id").limit(1).execute()
 
-            # 👇 your existing logic (KEEP IT)
             cutoff = datetime.now(timezone.utc) - timedelta(seconds=30)
 
             rows = supabase.table("calls") \
@@ -521,7 +519,7 @@ async def update_call_status(request: Request):
     if not call_id or not status:
         return {"ok": False}
 
-    # 1️⃣ Fetch call
+    # Fetch call
     call_resp = (
         supabase.table("calls")
         .select("*")
@@ -708,7 +706,7 @@ async def audio_stream(ws: WebSocket):
 @app.get("/api/calls/logs")
 def get_call_logs(user_id: str):
     try:
-        # 1️⃣ Get latest log per call
+        #Get latest log per call
         rows = supabase_select(
             "call_logs",
             f"or=(caller_id.eq.{user_id},receiver_id.eq.{user_id})&order=created_at.desc"
@@ -723,7 +721,7 @@ def get_call_logs(user_id: str):
                 continue
             seen.add(call_id)
 
-            # 2️⃣ Fetch call (source of truth)
+            #Fetch call (source of truth)
             call_resp = (
                 supabase.table("calls")
                 .select("caller_id,caller_username,receiver_id,receiver_username")
